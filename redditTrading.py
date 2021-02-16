@@ -19,6 +19,13 @@ import sys
 from dateutil.parser import parse
 import yfinance as yf
 
+def handle_cl_args():
+    stk_symb = "SXTC"
+    if(len(sys.argv)>1):
+        stk_symb = sys.argv[1]
+        print(f"Looking for occurences of {stk_symb}")
+    return stk_symb,
+
 
 def daterange(start_date, end_date):
     for n in range(int((end_date - start_date).days)):
@@ -26,21 +33,14 @@ def daterange(start_date, end_date):
 
 
 if __name__=="__main__":
-    stk_symb = "SXTC"
-    if(len(sys.argv)>1):
-        stk_symb = sys.argv[1]
-        print(f"Looking for occurences of {stk_symb}")
+    stk_symb, _ = handle_cl_args
 
     reddit = praw.Reddit(client_id="DkudDANPavT6uw"
                         ,client_secret="9nJrIkk-YPHpiI87fFCObE1JrtY0bg"
                         ,user_agent="Stock Symbol Search Tool by u/Steffanic")
 
-    n_sub_title = {}
-    n_sub_body = {}
-    n_any_com_body = {}
-    n_sub_title_com_body = {}
-    n_sub_body_com_body = {}
-
+    n_sub_title, n_sub_body, n_any_com_body, n_sub_title_com_body, n_sub_body_com_body={}, {}, {}, {}, {}
+    
     for sub in reddit.subreddit("all").search(stk_symb, sort='new'):
         sub_date = dt.fromtimestamp(sub.created_utc)
         comments = sub.comments
