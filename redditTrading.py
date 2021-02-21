@@ -19,7 +19,7 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import sys
 from dateutil.parser import parse
-import yfinance as yf
+import yahooquery as yq
 from english_words import english_words_set as ew
 import pickle
 import os
@@ -53,7 +53,7 @@ def get_start_date(all_occurences):
 def count_occurences(stk_symb):
     n_sub_title, n_sub_body, n_any_com_body, n_sub_title_com_body, n_sub_body_com_body={}, {}, {}, {}, {}
     
-    query_result = reddit.subreddit("all").search(stk_symb, sort='new', limit=1000)
+    query_result = reddit.subreddit("pennystocks").search(stk_symb, sort='new', limit=1000, time_filter="month")
     i=0
     for sub in query_result: # search through all posts in r/all for stk_symb
         i+=1
@@ -85,8 +85,6 @@ def plot_reddit_occurences_price(stk_symb, search_term):
 
     n_sub_title, n_sub_body, n_sub_title_com_body, n_sub_body_com_body, n_any_com_body = count_occurences(search_term)
     
-    print(n_sub_title, n_sub_body, n_sub_title_com_body, n_sub_body_com_body)
-
     # Let's consolidate these into a big tuple so we can get the earliest mention of a stock symbol concisely
 
     all_occurences = (n_sub_title, n_sub_body, n_sub_title_com_body, n_sub_body_com_body, n_any_com_body)
@@ -100,13 +98,13 @@ def plot_reddit_occurences_price(stk_symb, search_term):
 
 
 
-    stk = yf.Ticker(stk_symb)
-
+    stk = yq.Ticker(stk_symb, status_forcelist=[404, 429, 500, 502, 503, 504])
+    print("Retrieving Stock History")
     price_history = stk.history(start=start_date, end=end_date)
 
     print(price_history)
     
-    mean_close = np.mean(price_history['Close'])
+    mean_close = np.mean(price_history['close'])
     
     dates = [d for d in daterange(parse(start_date), parse(end_date))]
 
@@ -117,9 +115,10 @@ def plot_reddit_occurences_price(stk_symb, search_term):
     title_com_plot =frequency_imputer( n_sub_title_com_body, dates)
     body_com_plot = frequency_imputer(n_sub_body_com_body, dates)
 
-    price_imputer = lambda history, dates: [None if (d.date().__str__() not in history.index) else history['Close'].loc[d.date().__str__()] for d in dates]
+    price_imputer = lambda history, dates: [None if (d.date() not in history.index.get_level_values("date").to_list()) else history.loc[history.index.get_level_values('date')==d.date(), 'close'] for d in dates]
 
     price_history_plot = price_imputer(price_history, dates)
+    
 
     plt.figure(figsize=(15,5))
     plt.subplot(2,1,1)
@@ -138,22 +137,34 @@ def plot_reddit_occurences_price(stk_symb, search_term):
     plt.show()
 
 def get_stocks_mentioned():
-    all_stocks = pd.read_csv("nyse-listed_csv.csv")     # Read all stocks from csv
+    all_stocks = pd.read_csv("nasdaq.csv")     # Read all stocks from csv
     reddit_stocks=all_stocks
-    for stock in all_stocks["ACT Symbol"]:
+    earliest_dates = []
+    num_mentions = []
+    for stock in all_stocks["Symbol"]:
+        earliest_date = 999999999999
         search_term = stock
         if stock in ew:
-            search_term = all_stocks.loc[all_stocks['ACT Symbol']==stock]["Company Name"].iloc[0]
+            search_term = all_stocks.loc[all_stocks['Symbol']==stock]["Name"].iloc[0]
             print("The stock symbol is a standard english word, searching for company name instead!")
         mentions=0
         print(f"Searching for {search_term}")
-        query_result = reddit.subreddit("all").search(search_term, sort='new', limit=10)
+        query_result = reddit.subreddit("pennystocks").search(search_term, sort='new', limit=100, time_filter="month")
         for sub in query_result:
             if(stock in sub.title or stock in sub.selftext):
                 mentions+=1
-        if mentions<10:
+                if(sub.created_utc<earliest_date):
+                    earliest_date=sub.created_utc
+        print(f"{stock} has {mentions} mentions.")
+        if mentions<1 or mentions>40:
             print(f"Throwing away {stock}")
-            reddit_stocks = reddit_stocks[reddit_stocks["ACT Symbol"]!=stock]
+            reddit_stocks = reddit_stocks[reddit_stocks["Symbol"]!=stock]
+        else:
+            print("Adding date and mentions to stock")
+            earliest_dates.append(earliest_date)
+            num_mentions.append(mentions)  
+    reddit_stocks["Earliest Date"] = pd.Series(earliest_dates)
+    reddit_stocks["Mentions"] = pd.Series(num_mentions)
     with open("rStocks.pickle", "wb") as f:
         pickle.dump(reddit_stocks, f)
     return reddit_stocks
@@ -194,7 +205,7 @@ if __name__=="__main__":
     while not to_quit:
         print("Select a stock:")
         for i in range(25):
-            print(f" { (reddit_stocks['ACT Symbol']).iloc[i+scroll_offset] } : { (reddit_stocks['Company Name']).iloc[i+scroll_offset] } ")
+            print(f" { (reddit_stocks['Symbol']).iloc[i+scroll_offset] } : { (reddit_stocks['Name']).iloc[i+scroll_offset] } : First mentioned in top 100 results { -1 if np.isnan((reddit_stocks['Earliest Date']).iloc[i+scroll_offset]) else dt.fromtimestamp((reddit_stocks['Earliest Date']).iloc[i+scroll_offset]).date().__str__() } : Number of Mentions in top 100 results { -1 if np.isnan((reddit_stocks['Mentions']).iloc[i+scroll_offset]) else (reddit_stocks['Mentions']).iloc[i+scroll_offset] }")
         
         print("Commands:")
         print(" s [STOCK SYMBOL] - plot stock symbol occurences and price")
@@ -219,8 +230,8 @@ if __name__=="__main__":
             stk_symb = selection[2:]
             search_term=stk_symb
             if stk_symb in ew or len(stk_symb)==1:
-                search_term = remove_common_words(reddit_stocks.loc[reddit_stocks['ACT Symbol']==stk_symb]["Company Name"].iloc[0]).replace(" ", " OR ")
-                print("The stock symbol is a standard english word, searching for company name instead!")
+                search_term = remove_common_words(reddit_stocks.loc[reddit_stocks['Symbol']==stk_symb]["Name"].iloc[0]).replace(" ", " OR ")
+                print("The stock symbol is a standard english word, searching for Name instead!")
             plot_reddit_occurences_price(stk_symb, search_term)
 
 
