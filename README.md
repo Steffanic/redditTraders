@@ -82,7 +82,7 @@ When you select a stock with s, the script will search for occurences of the sto
 Have fun!
 
 
-
+A small change for Austin
 
 
 
