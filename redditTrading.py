@@ -122,18 +122,25 @@ def plot_reddit_occurences_price(stk_symb, search_term):
 
     plt.figure(figsize=(15,5))
     plt.subplot(2,1,1)
+    plt.grid(which='major', axis='x')
+    plt.title(f"Frequency of {stk_symb} in r/pennystocks")
     plt.plot(range(len(dates)),body_plot, label="Occurences in body of submission")
     plt.plot(range(len(dates)),title_plot, label="Occurences in title of submission")
     plt.plot(range(len(dates)),body_com_plot, label="Occurences in body of comments if in submission title")
     plt.plot(range(len(dates)),title_com_plot, label="Occurences in body of comments if in submission body")
+    plt.legend()
+    plt.xticks([])
     plt.subplot(2,1,2)
+    plt.grid(which='major', axis='x')
+    plt.title(f"Closing Price of {stk_symb}")
     plt.plot(range(len(dates)),price_history_plot, label="Closing Price")
     # plt.plot(range(len(dates)),np.ones(len(dates))*mean_close, label="Mean Close")
 
-    plt.title(f"Frequency of {stk_symb} in r/all")
+    
     plt.xticks(ticks=range(len(dates)), labels=list(map(lambda x: x.date(),dates)), rotation=70)
     # plt.grid()
     plt.legend()
+    plt.tight_layout()
     plt.show()
 
 def get_stocks_mentioned():
